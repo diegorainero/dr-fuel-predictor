@@ -1,0 +1,56 @@
+body {
+    background-color: #f8f9fa;
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    border: 1px solid rgba(0, 0, 0, 0.125);
+}
+
+.fuel-card {
+    transition: transform 0.2s;
+    cursor: pointer;
+}
+
+.fuel-card:hover {
+    transform: translateY(-2px);
+}
+
+.trend-up {
+    color: #dc3545;
+}
+
+.trend-down {
+    color: #198754;
+}
+
+.trend-stable {
+    color: #6c757d;
+}
+
+.confidence-bar {
+    height: 8px;
+    border-radius: 4px;
+    background: #e9ecef;
+}
+
+.confidence-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s ease;
+}
+
+.news-item {
+    border-left: 3px solid #007bff;
+    padding-left: 10px;
+    margin-bottom: 10px;
+}
+
+.positive-sentiment {
+    border-left-color: #198754;
+}
+
+.negative-sentiment {
+    border-left-color: #dc3545;
+}
