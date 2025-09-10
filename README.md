@@ -1,64 +1,64 @@
 # 🚗 DR Fuel Predictor
 
-**Sistema di previsione prezzi carburanti con intelligenza artificiale**
+AI-powered fuel price forecasting system
 
-Un'applicazione web sviluppata in Rust che analizza i dati storici dei prezzi dei carburanti in Italia, integra notizie di mercato e utilizza l'intelligenza artificiale per generare previsioni accurate sui prezzi futuri.
+A Rust-based web application that analyzes historical fuel price data in Italy, integrates market news, and uses artificial intelligence to generate accurate forecasts of future prices.
 
-## 📋 Caratteristiche
+## 📋 Features
 
-- **📊 Analisi Avanzata**: Calcolo di volatilità, tendenze e indicatori tecnici
-- **🤖 Intelligenza Artificiale**: Integrazione con OpenAI GPT-4 per analisi predittive
-- **📰 Analisi News**: Monitoraggio sentiment delle notizie di mercato
-- **🌐 API REST**: Endpoint completi per l'integrazione con sistemi esterni
-- **💻 Interfaccia Web**: Dashboard moderna e responsive con Bootstrap 5
-- **📈 Visualizzazioni**: Grafici e metriche in tempo reale
-- **🔄 Aggiornamenti Real-time**: Dati sempre aggiornati dalle fonti ufficiali
+- 📊 Advanced Analytics: volatility, trends, and technical indicators
+- 🤖 Artificial Intelligence: OpenAI GPT-4 integration for predictive analysis
+- 📰 News Analysis: market news sentiment monitoring
+- 🌐 REST API: complete endpoints for integration with external systems
+- 💻 Web Interface: modern, responsive dashboard with Bootstrap 5
+- 📈 Visualizations: real-time charts and metrics
+- 🔄 Real-time Updates: continuously refreshed data from official sources
 
-## 🏗️ Architettura
+## 🏗️ Architecture
 
 ### Backend (Rust)
-- **Framework**: Actix-Web per il server HTTP
-- **Database**: Integrazione con API MASE (Ministero dell'Ambiente e della Sicurezza Energetica)
-- **AI Integration**: async-openai per l'analisi predittiva
-- **News API**: Integrazione per il monitoraggio delle notizie di mercato
+- Framework: Actix-Web HTTP server
+- Data Source: integration with MASE API (Italian Ministry of Environment and Energy Security)
+- AI Integration: async-openai for predictive analysis
+- News API: integration for monitoring market news
 
 ### Frontend (JavaScript + Bootstrap)
-- **UI Framework**: Bootstrap 5 con Font Awesome
-- **Charts**: Chart.js per visualizzazioni
-- **Responsive Design**: Ottimizzato per desktop e mobile
+- UI Framework: Bootstrap 5 with Font Awesome
+- Charts: Chart.js visualizations
+- Responsive Design: optimized for desktop and mobile
 
-## 🚀 Installazione e Setup
+## 🚀 Installation & Setup
 
-### Prerequisiti
-- **Rust** (edizione 2021+)
-- **OpenAI API Key** (per l'analisi AI)
-- **News API Key** (opzionale, per le notizie)
+### Prerequisites
+- Rust (edition 2021+)
+- OpenAI API Key (for AI analysis)
+- News API Key (optional, for news)
 
-### Installazione
+### Installation
 
-1. **Clona il repository**:
+1) Clone the repository:
 ```bash
 git clone https://github.com/tuousername/dr_fuel_predictor.git
 cd dr_fuel_predictor
 ```
 
-2. **Configura le variabili d'ambiente**:
+2) Configure environment variables:
 ```bash
 cp .env.example .env
 ```
 
-Modifica il file `.env`:
+Edit the `.env` file:
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
 NEWS_API_KEY=your_news_api_key_here
 ```
 
-3. **Compila ed esegui**:
+3) Build and run:
 ```bash
 cargo run
 ```
 
-L'applicazione sarà disponibile su: `http://localhost:8083`
+The application will be available at: `http://localhost:8083`
 
 ## 📡 API Endpoints
 
@@ -66,9 +66,9 @@ L'applicazione sarà disponibile su: `http://localhost:8083`
 ```http
 GET /api/health
 ```
-Verifica lo stato del server.
+Checks the server status.
 
-**Risposta**:
+Response:
 ```json
 {
   "success": true,
@@ -77,26 +77,26 @@ Verifica lo stato del server.
 }
 ```
 
-### Previsioni Carburanti
+### Fuel Predictions
 ```http
 POST /api/predict
 ```
-Genera previsioni per tutti i tipi di carburante.
+Generates forecasts for all fuel types.
 
-**Risposta**:
+Response:
 ```json
 {
   "success": true,
   "data": [
     {
-      "prodotto": "BENZINA SUPER",
-      "prezzo_attuale": 1.785,
-      "prezzo_previsto": 1.798,
-      "variazione_percentuale": 0.73,
-      "tendenza": "Tendenza al rialzo",
-      "ai_analysis": "Analisi AI dettagliata...",
+      "product": "BENZINA SUPER",
+      "current_price": 1.785,
+      "predicted_price": 1.798,
+      "percent_change": 0.73,
+      "trend": "Upward trend",
+      "ai_analysis": "Detailed AI analysis...",
       "confidence": 82.5,
-      "market_sentiment": "Mercato stabile",
+      "market_sentiment": "Stable market",
       "news_impact": 0.3,
       "timestamp": "2024-01-15T10:30:00Z"
     }
@@ -105,20 +105,20 @@ Genera previsioni per tutti i tipi di carburante.
 }
 ```
 
-### Notizie di Mercato
+### Market News
 ```http
 GET /api/news
 ```
-Recupera le ultime notizie correlate al mercato energetico.
+Retrieves the latest news related to the energy market.
 
-**Risposta**:
+Response:
 ```json
 {
   "success": true,
   "data": [
     {
-      "title": "Tensioni in Medio Oriente fanno salire il prezzo del petrolio",
-      "description": "Le recenti tensioni geopolitiche...",
+      "title": "Tensions in the Middle East push oil prices higher",
+      "description": "Recent geopolitical tensions...",
       "url": "https://example.com/news1",
       "published_at": "2024-01-15T08:00:00Z",
       "source": {
@@ -131,108 +131,108 @@ Recupera le ultime notizie correlate al mercato energetico.
 }
 ```
 
-## 🔧 Configurazione
+## 🔧 Configuration
 
-### Variabili d'Ambiente
+### Environment Variables
 
-| Variabile | Descrizione | Obbligatorio |
-|-----------|-------------|--------------|
-| `OPENAI_API_KEY` | Chiave API di OpenAI per l'analisi AI | ✅ |
-| `NEWS_API_KEY` | Chiave API per il recupero notizie | ❌ |
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `OPENAI_API_KEY` | OpenAI API key for AI analysis | ✅ |
+| `NEWS_API_KEY` | API key to fetch news | ❌ |
 
-### Porte e Binding
-- **Server HTTP**: `127.0.0.1:8083`
-- **File Statici**: Serviti da `/static`
+### Ports and Binding
+- HTTP Server: `127.0.0.1:8083`
+- Static Files: served from `/static`
 
-## 📊 Fonti Dati
+## 📊 Data Sources
 
-### Dati Ufficiali Carburanti
-- **Fonte**: MASE (Ministero dell'Ambiente e della Sicurezza Energetica)
-- **API**: `https://sisen.mase.gov.it/dgsaie/api/v1/weekly-prices/report/export`
-- **Formato**: JSON
-- **Frequenza**: Settimanale
+### Official Fuel Data
+- Source: MASE (Italian Ministry of Environment and Energy Security)
+- API: `https://sisen.mase.gov.it/dgsaie/api/v1/weekly-prices/report/export`
+- Format: JSON
+- Frequency: Weekly
 
-### Analisi Tecnica
-L'applicazione calcola automaticamente:
-- **Volatilità**: Deviazione standard dei prezzi
-- **Tendenze**: Analisi delle variazioni percentuali
-- **Confidence Score**: Basato su volatilità e dati storici
-- **Indicatori**: RSI, MACD, Bollinger Bands (in sviluppo)
+### Technical Analysis
+The application automatically calculates:
+- Volatility: standard deviation of prices
+- Trends: percentage change analysis
+- Confidence Score: based on volatility and historical data
+- Indicators: RSI, MACD, Bollinger Bands (in progress)
 
-## 🤖 Integrazione AI
+## 🤖 AI Integration
 
 ### OpenAI GPT-4
-- **Modello**: `gpt-4-turbo-preview`
-- **Temperatura**: 0.2 (per risposte più conservative)
-- **Max Tokens**: 2000
-- **Funzioni**:
-  - Analisi contestuale del mercato
-  - Interpretazione delle notizie
-  - Previsioni qualitative
-  - Identificazione fattori di rischio
+- Model: `gpt-4-turbo-preview`
+- Temperature: 0.2 (for more conservative responses)
+- Max Tokens: 2000
+- Capabilities:
+  - Contextual market analysis
+  - News interpretation
+  - Qualitative forecasts
+  - Risk factor identification
 
 ### Prompt Engineering
-Il sistema utilizza prompt specializzati in italiano per:
-- Analisi macroeconomica
-- Correlazioni geopolitiche
-- Fattori stagionali
-- Sentiment analysis delle notizie
+The system uses specialized prompts (in Italian) for:
+- Macroeconomic analysis
+- Geopolitical correlations
+- Seasonal factors
+- News sentiment analysis
 
-## 🎨 Interfaccia Utente
+## 🎨 User Interface
 
-### Dashboard Principale
-- **Previsioni**: Cards colorate per ogni tipo di carburante
-- **Tendenze**: Indicatori visivi (↗️ ↘️ ➡️)
-- **Confidence Bar**: Barre di progresso per il livello di fiducia
-- **News Feed**: Ultime notizie con sentiment analysis
-- **Analisi AI**: Sezione dedicata ai insights generati dall'AI
+### Main Dashboard
+- Predictions: colored cards for each fuel type
+- Trends: visual indicators (↗️ ↘️ ➡️)
+- Confidence Bar: progress bars indicating confidence level
+- News Feed: latest news with sentiment analysis
+- AI Analysis: dedicated section with AI-generated insights
 
-### Controlli
-- **Refresh**: Aggiornamento manuale dei dati
-- **Export**: Esportazione dati (in sviluppo)
-- **Responsive**: Ottimizzato per tutti i dispositivi
+### Controls
+- Refresh: manual data refresh
+- Export: data export (in progress)
+- Responsive: optimized for all devices
 
-## 🔍 Struttura del Progetto
+## 🔍 Project Structure
 
 ```
 dr_fuel_predictor/
 ├── src/
-│   ├── main.rs           # Server HTTP e routing
-│   └── predictor.rs      # Logica predittiva e AI
+│   ├── main.rs           # HTTP server and routing
+│   └── predictor.rs      # Predictive logic and AI
 ├── static/
-│   ├── index.html        # Dashboard principale
-│   ├── app.js           # Logica frontend
-│   └── styles.css       # Stili personalizzati
-├── Cargo.toml           # Dipendenze Rust
-├── .env                 # Variabili d'ambiente
-└── README.md           # Documentazione
+│   ├── index.html        # Main dashboard
+│   ├── app.js            # Frontend logic
+│   └── styles.css        # Custom styles
+├── Cargo.toml            # Rust dependencies
+├── .env                  # Environment variables
+└── README.md             # Documentation
 ```
 
-## 📈 Algoritmi Predittivi
+## 📈 Predictive Algorithms
 
-### 1. Analisi Statistica
-- **Media Mobile**: Calcolo tendenze a breve termine
-- **Volatilità**: Deviazione standard normalizzata
-- **Correlazioni**: Analisi multi-prodotto
+### 1. Statistical Analysis
+- Moving Average: short-term trend calculation
+- Volatility: normalized standard deviation
+- Correlations: multi-product analysis
 
-### 2. Fattori di Mercato
-- **Geopolitica**: Score basato su sentiment news
-- **Stagionalità**: Coefficienti mensili
-- **Domanda/Offerta**: Analisi pattern storici
+### 2. Market Factors
+- Geopolitics: score based on news sentiment
+- Seasonality: monthly coefficients
+- Supply/Demand: historical pattern analysis
 
-### 3. Machine Learning (Pianificato)
-- **Time Series Forecasting**: ARIMA, Prophet
-- **Feature Engineering**: Variabili esogene
-- **Model Ensemble**: Combinazione algoritmi
+### 3. Machine Learning (Planned)
+- Time Series Forecasting: ARIMA, Prophet
+- Feature Engineering: exogenous variables
+- Model Ensemble: algorithm combinations
 
-## 🛠️ Sviluppo
+## 🛠️ Development
 
-### Test
+### Tests
 ```bash
 cargo test
 ```
 
-### Build Release
+### Release Build
 ```bash
 cargo build --release
 ```
@@ -243,16 +243,16 @@ cargo clippy
 cargo fmt
 ```
 
-### Logs e Debug
-Il sistema fornisce logging dettagliato:
-- 📡 Richieste API
-- 📊 Calcoli statistici
-- 🤖 Interazioni AI
-- ⚠️ Errori e warning
+### Logging & Debugging
+The system provides detailed logging:
+- 📡 API requests
+- 📊 Statistical calculations
+- 🤖 AI interactions
+- ⚠️ Errors and warnings
 
-## 🚀 Deploy
+## 🚀 Deployment
 
-### Docker (Raccomandato)
+### Docker (Recommended)
 ```dockerfile
 FROM rust:1.75 as builder
 WORKDIR /app
@@ -267,91 +267,91 @@ EXPOSE 8083
 CMD ["dr_fuel_predictor"]
 ```
 
-### Server Tradizionale
-1. Compila per la produzione: `cargo build --release`
-2. Copia il binario e la cartella `static` sul server
-3. Configura reverse proxy (nginx/Apache)
-4. Setup systemd service per auto-restart
+### Traditional Server
+1. Build for production: `cargo build --release`
+2. Copy the binary and the `static` folder to the server
+3. Configure a reverse proxy (nginx/Apache)
+4. Set up a systemd service for auto-restart
 
 ## 📊 Performance
 
-### Benchmark
-- **Latenza API**: < 500ms per previsione completa
-- **Throughput**: > 100 req/sec
-- **Memory Usage**: ~50MB a riposo
-- **AI Response Time**: 2-5 secondi (dipende da OpenAI)
+### Benchmarks
+- API Latency: < 500ms per full forecast
+- Throughput: > 100 req/sec
+- Memory Usage: ~50MB idle
+- AI Response Time: 2-5 seconds (depends on OpenAI)
 
-### Ottimizzazioni
-- **Caching**: Risultati AI cached per 1 ora
-- **Compression**: Gzip per risposte JSON
-- **Connection Pooling**: HTTP client riutilizzabile
-- **Async Processing**: Elaborazione non bloccante
+### Optimizations
+- Caching: AI results cached for 1 hour
+- Compression: Gzip for JSON responses
+- Connection Pooling: reusable HTTP client
+- Async Processing: non-blocking workloads
 
-## 🔐 Sicurezza
+## 🔐 Security
 
 ### API Keys
-- Mai committare chiavi nel codice
-- Usa variabili d'ambiente
-- Rotazione periodica delle chiavi
+- Never commit keys in code
+- Use environment variables
+- Rotate keys periodically
 
 ### CORS
-- Configurato per sviluppo locale
-- Restringi in produzione
+- Configured for local development
+- Restrict in production
 
 ### Rate Limiting
-- Implementare throttling per API esterne
-- Monitorare usage OpenAI
+- Implement throttling for external APIs
+- Monitor OpenAI usage
 
-## 🤝 Contributi
+## 🤝 Contributing
 
-1. Fork il progetto
-2. Crea un branch per la feature (`git checkout -b feature/AmazingFeature`)
-3. Commit le modifiche (`git commit -m 'Add AmazingFeature'`)
-4. Push al branch (`git push origin feature/AmazingFeature`)
-5. Apri una Pull Request
+1. Fork the project
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
 ## 📝 TODO / Roadmap
 
-### Versione 2.0
-- [ ] **Database persistente** (PostgreSQL/SQLite)
-- [ ] **Autenticazione utenti**
-- [ ] **Dashboard amministratore**
-- [ ] **Notifiche push/email**
-- [ ] **API rate limiting**
-- [ ] **Unit tests completi**
+### Version 2.0
+- [ ] Persistent database (PostgreSQL/SQLite)
+- [ ] User authentication
+- [ ] Admin dashboard
+- [ ] Push/email notifications
+- [ ] API rate limiting
+- [ ] Comprehensive unit tests
 
-### Versione 2.5
-- [ ] **Machine Learning avanzato**
-- [ ] **Previsioni multiple timeframe**
-- [ ] **Analisi competitor pricing**
-- [ ] **Mobile app (React Native)**
-- [ ] **Integrazione social media**
+### Version 2.5
+- [ ] Advanced Machine Learning
+- [ ] Multiple timeframe forecasts
+- [ ] Competitor pricing analysis
+- [ ] Mobile app (React Native)
+- [ ] Social media integration
 
-### Versione 3.0
-- [ ] **Microservizi architecture**
-- [ ] **Kubernetes deployment**
-- [ ] **Real-time websockets**
-- [ ] **Multi-country support**
-- [ ] **Blockchain price verification**
+### Version 3.0
+- [ ] Microservices architecture
+- [ ] Kubernetes deployment
+- [ ] Real-time websockets
+- [ ] Multi-country support
+- [ ] Blockchain price verification
 
-## 📄 Licenza
+## 📄 License
 
-Questo progetto è sotto licenza MIT. Vedi il file `LICENSE` per i dettagli.
+This project is licensed under the MIT License. See the `LICENSE` file for details.
 
-## 👨‍💻 Autore
+## 👨‍💻 Author
 
 **Diego Rainero**
-- Email: [tuo-email@example.com]
-- LinkedIn: [tuo-linkedin]
+- Email: [your-email@example.com]
+- LinkedIn: [your-linkedin]
 - GitHub: [@tuousername]
 
-## 🙏 Ringraziamenti
+## 🙏 Acknowledgements
 
-- **MASE** per i dati aperti sui carburanti
-- **OpenAI** per le API di intelligenza artificiale
-- **Rust Community** per l'ecosistema fantastico
-- **Actix-Web** per il framework web performante
+- MASE for open fuel data
+- OpenAI for AI APIs
+- The Rust Community for the fantastic ecosystem
+- Actix-Web for the high-performance web framework
 
 ---
 
-💡 **Suggerimento**: Per supporto o domande, apri una [Issue](https://github.com/tuousername/dr_fuel_predictor/issues) su GitHub!
+💡 Tip: For support or questions, open an [Issue](https://github.com/tuousername/dr_fuel_predictor/issues) on GitHub!
