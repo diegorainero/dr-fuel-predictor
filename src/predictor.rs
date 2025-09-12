@@ -7,14 +7,18 @@ use async_openai::{
 };
 use chrono::{Datelike, NaiveDate, Utc};
 use dotenv::dotenv;
+use google_generative_ai_rs::v1::{
+    api::Client as GeminiClient,
+    gemini::{Content, Part},
+};
+use reqwest::Client as ReqwestClient; // Per DeepSeek
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
-use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 struct SentimentSummary {
     positive: usize,
     negative: usize,
@@ -23,7 +27,7 @@ struct SentimentSummary {
 }
 
 // Aggiungi queste struct per l'analisi avanzata
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 struct AdvancedMarketContext {
     market_context: MarketContext,
     sentiment_summary: SentimentSummary,
@@ -90,6 +94,36 @@ pub struct NewsArticle {
 #[derive(Debug, Serialize, Clone)]
 pub struct NewsSource {
     name: String,
+}
+
+#[derive(Debug, Clone)]
+enum AIProvider {
+    OpenAI,
+    DeepSeek,
+    Gemini,
+    Statistical, // Fallback
+}
+
+// Funzione per determinare il provider in base alle API key disponibili
+fn determine_ai_provider() -> AIProvider {
+    let openai_key = env::var("OPENAI_API_KEY").unwrap_or_default();
+    let deepseek_key = env::var("DEEPSEEK_API_KEY").unwrap_or_default();
+    let gemini_key = env::var("GEMINI_API_KEY").unwrap_or_default();
+
+    // Priorità: Gemini (free) > DeepSeek > OpenAI
+    if !gemini_key.is_empty() {
+        println!("🎯 Selected Gemini provider (free tier)");
+        AIProvider::Gemini
+    } else if !deepseek_key.is_empty() {
+        println!("🎯 Selected DeepSeek provider");
+        AIProvider::DeepSeek
+    } else if !openai_key.is_empty() {
+        println!("🎯 Selected OpenAI provider");
+        AIProvider::OpenAI
+    } else {
+        println!("🎯 No API keys found, using statistical analysis");
+        AIProvider::Statistical
+    }
 }
 
 // Funzioni di supporto
@@ -378,6 +412,126 @@ async fn get_ai_analysis(
     Ok(analysis_map)
 }
 
+async fn get_deepseek_analysis(
+    fuel_data: &[FuelData],
+    predictions: &[FuelPrediction],
+    market_context: MarketContext,
+    news_articles: &[NewsArticle],
+    sentiment: SentimentSummary,
+) -> Result<HashMap<String, String>, Box<dyn Error>> {
+    let deepseek_api_key = env::var("DEEPSEEK_API_KEY")?;
+    let client = ReqwestClient::new();
+
+    let enhanced_context = prepare_enhanced_context(
+        fuel_data,
+        predictions,
+        market_context,
+        news_articles,
+        sentiment,
+    );
+
+    let system_prompt = r#"SEI UN ANALISTA ESPERTO DEI MERCATI ENERGETICI ITALIANI ED INTERNAZIONALI.
+
+COMPITI:
+1. Analisi globale del mercato carburanti
+2. Previsioni specifiche per prodotto
+3. Identificazione fattori di rischio
+4. Raccomandazioni basate su dati
+
+LINEE GUIDA:
+- Usa dati concreti e metriche quantitative
+- Considera: geopolitica, stagionalità, trend storici
+- Fornisci percentuali e intervalli di confidenza
+- Sii realistico e conservativo nelle previsioni
+- Analizza in italiano chiaro e professionale
+
+FORMATO:
+## ANALISI GLOBALE
+[analisi generale]
+
+## PRODOTTO SPECIFICO
+[analisi dettagliata per prodotto]
+
+## RISCHI E OPPORTUNITÀ
+[lista punti]"#;
+
+    let product_analyses: Vec<ProductAnalysis> = predictions
+        .iter()
+        .map(|p| ProductAnalysis {
+            name: p.prodotto.clone(),
+            current_price: p.prezzo_attuale,
+            predicted_price: p.prezzo_previsto,
+            change_percentage: p.variazione_percentuale,
+            volatility: calculate_product_volatility(fuel_data, &p.prodotto),
+            confidence: p.confidence,
+            trend_strength: p.variazione_percentuale.abs() / 100.0,
+        })
+        .collect();
+
+    let user_content = format!(
+        "Analizza questo scenario mercato carburanti:\n\n\
+        CONTESTO MERCATO:\n\
+        - Tensione geopolitica: {:.1}%\n\
+        - Sentiment news: {:.2} ({} positivo, {} negativo)\n\
+        - Fattore stagionale: {:.1}%\n\
+        - Volatilità generale: {:.1}%\n\n\
+        PREVISIONI ATTUALI:\n{}\n\n\
+        ULTIME NOTIZIE:\n{}\n\n\
+        Fornisci analisi dettagliata in italiano.",
+        enhanced_context.market_context.geopolitical_tensions * 100.0,
+        enhanced_context.sentiment_summary.overall_score,
+        enhanced_context.sentiment_summary.positive,
+        enhanced_context.sentiment_summary.negative,
+        enhanced_context.market_context.seasonal_factors * 100.0,
+        enhanced_context.market_context.overall_volatility,
+        serde_json::to_string_pretty(&product_analyses)?,
+        format_news_for_ai(news_articles)
+    );
+
+    // Payload per DeepSeek API (adatta in base alla documentazione ufficiale)
+    let payload = json!({
+        "model": "deepseek-chat", // o il modello appropriato
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content}
+        ],
+        "temperature": 0.2,
+        "max_tokens": 2000
+    });
+
+    let response = client
+        .post("https://api.deepseek.com/v1/chat/completions") // URL corretto dell'API
+        .header("Authorization", format!("Bearer {}", deepseek_api_key))
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await?;
+
+    if !response.status().is_success() {
+        let error_text = response.text().await?;
+        return Err(format!("DeepSeek API error: {}", error_text).into());
+    }
+
+    let response_json: serde_json::Value = response.json().await?;
+
+    let mut analysis_map = HashMap::new();
+
+    if let Some(choices) = response_json["choices"].as_array() {
+        if let Some(first_choice) = choices.first() {
+            if let Some(content) = first_choice["message"]["content"].as_str() {
+                let (global, specific) = parse_ai_response(content, predictions);
+                analysis_map.insert("GLOBAL".to_string(), global);
+
+                for (product, analysis) in specific {
+                    analysis_map.insert(product, analysis);
+                }
+            }
+        }
+    }
+
+    Ok(analysis_map)
+}
+
 // 1. FUNZIONE OPENAI AVANZATA
 async fn get_openai_analysis(
     fuel_data: &[FuelData],
@@ -503,39 +657,35 @@ fn get_advanced_statistical_analysis(
 ) -> Result<HashMap<String, String>, Box<dyn Error>> {
     let mut analysis_map = HashMap::new();
 
-    // Analisi globale avanzata
+    println!("📊 Using advanced statistical analysis");
+
+    let timestamp = Utc::now().format("%d/%m/%Y %H:%M").to_string();
+
+    // Analisi globale
     let global_analysis = format!(
-        "📊 ANALISI STATISTICA AVANZATA MERCATO CARBURANTI\n\
-        ⏰ Data: {}\n\n\
+        "📊 ANALISI STATISTICA AVANZATA\n\
+        ⏰ Data: {}\n\
+        🎯 Metodo: Modelli statistici avanzati\n\n\
         🌍 CONTESTO MACRO:\n\
         • Tensione geopolitica: {:.1}%\n\
-        • Sentiment di mercato: {:.2}\n\
-        • Fattore stagionale: {:.1}%\n\
-        • Volatilità complessiva: {:.1}%\n\n\
+        • Volatilità complessiva: {:.1}%\n\
+        • Fattore stagionale: {:.1}%\n\n\
         📈 TENDENZA GENERALE: {}\n\
-        🎯 CONFIDENCE OVERALL: {:.1}%\n\n\
-        🔍 INDICATORI TECNICI:\n\
-        • RSI medio: {:.1}\n\
-        • Momentum: {}\n\
-        • Support/resistance: {}",
-        Utc::now().format("%d/%m/%Y %H:%M"),
+        🔍 BASATO SU: Analisi di {} dati storici",
+        timestamp,
         market_context.geopolitical_tensions * 100.0,
-        market_context.news_sentiment,
-        market_context.seasonal_factors * 100.0,
         market_context.overall_volatility,
+        market_context.seasonal_factors * 100.0,
         get_overall_trend(predictions),
-        calculate_weighted_confidence(predictions),
-        calculate_average_rsi(fuel_data),
-        calculate_market_momentum(predictions),
-        identify_support_resistance(fuel_data)
+        fuel_data.len()
     );
 
     analysis_map.insert("GLOBAL".to_string(), global_analysis);
 
-    // Analisi specifica per prodotto
+    // Analisi per prodotto
     for prediction in predictions {
         let product_analysis = format!(
-            "⛽ ANALISI DETTAGLIATA: {}\n\
+            "⛽ ANALISI STATISTICA: {}\n\
             💰 Prezzo attuale: {:.3}€\n\
             🔮 Prezzo previsto: {:.3}€\n\
             📊 Variazione: {:+.2}%\n\
@@ -543,11 +693,7 @@ fn get_advanced_statistical_analysis(
             📈 Trend: {}\n\
             🌊 Volatilità: {:.1}%\n\
             ⚠️  Rischio: {}\n\n\
-            💡 INDICATORI TECNICI:\n\
-            • Bollinger Bands: {}\n\
-            • MACD: {}\n\
-            • Volume relativo: {:.1}\n\
-            • Seasonal adjustment: {:.1}%",
+            💡 METODOLOGIA: Regressione lineare + Media mobile",
             prediction.prodotto,
             prediction.prezzo_attuale,
             prediction.prezzo_previsto,
@@ -555,11 +701,7 @@ fn get_advanced_statistical_analysis(
             prediction.confidence,
             prediction.tendenza,
             calculate_product_volatility(fuel_data, &prediction.prodotto),
-            assess_risk_level(prediction),
-            calculate_bollinger_signal(fuel_data, &prediction.prodotto),
-            calculate_macd_signal(fuel_data, &prediction.prodotto),
-            calculate_volume_ratio(fuel_data),
-            market_context.seasonal_factors * 100.0
+            assess_risk_level(prediction)
         );
 
         analysis_map.insert(prediction.prodotto.clone(), product_analysis);
@@ -670,17 +812,17 @@ fn assess_risk_level(prediction: &FuelPrediction) -> String {
     .to_string()
 }
 
-fn calculate_bollinger_signal(fuel_data: &[FuelData], product: &str) -> String {
+fn calculate_bollinger_signal(_fuel_data: &[FuelData], _product: &str) -> String {
     // Implementazione semplificata
     "Neutro".to_string()
 }
 
-fn calculate_macd_signal(fuel_data: &[FuelData], product: &str) -> String {
+fn calculate_macd_signal(_fuel_data: &[FuelData], _product: &str) -> String {
     // Implementazione semplificata
     "Neutro".to_string()
 }
 
-fn calculate_volume_ratio(fuel_data: &[FuelData]) -> f64 {
+fn calculate_volume_ratio(_fuel_data: &[FuelData]) -> f64 {
     // Placeholder per analisi volume
     1.0
 }
@@ -713,7 +855,7 @@ fn prepare_enhanced_context(
     news_articles: &[NewsArticle],
     sentiment: SentimentSummary,
 ) -> AdvancedMarketContext {
-    let product_analyses: Vec<ProductAnalysis> = predictions
+    let _product_analyses: Vec<ProductAnalysis> = predictions
         .iter()
         .map(|p| ProductAnalysis {
             name: p.prodotto.clone(),
@@ -830,39 +972,95 @@ pub async fn analyze_fuel_prices() -> Result<Vec<FuelPrediction>, Box<dyn Error>
     let volatility = calculate_overall_volatility(&predictions);
     let market_context = create_market_context(&sentiment, volatility);
 
-    // SCELTA INTELLIGENTE DEL METODO
-    let ai_analysis = if env::var("OPENAI_API_KEY").is_ok() {
-        println!("🚀 Using OpenAI advanced analysis");
-        match get_openai_analysis(
-            &fuel_data,
-            &predictions,
-            market_context.clone(),
-            &news_articles,
-            SentimentSummary {
-                positive: sentiment.positive,
-                negative: sentiment.negative,
-                neutral: sentiment.neutral,
-                overall_score: sentiment.overall_score,
-            },
-        )
-        .await
-        {
-            Ok(analysis) => {
-                println!("✅ OpenAI analysis successful");
-                analysis
-            }
-            Err(e) => {
-                println!(
-                    "⚠️ OpenAI analysis failed: {}. Falling back to statistical analysis",
-                    e
-                );
-                println!("📊 Using advanced statistical analysis");
-                get_advanced_statistical_analysis(&fuel_data, &predictions, market_context.clone())?
+    // Determina automaticamente il provider
+    let provider = determine_ai_provider();
+
+    let ai_analysis = match provider {
+        AIProvider::Gemini => {
+            println!("🚀 Using Gemini detailed analysis");
+            match get_gemini_analysis(
+                &fuel_data,
+                &predictions,
+                market_context.clone(),
+                &news_articles,
+                &sentiment,
+            )
+            .await
+            {
+                Ok(analysis) => {
+                    println!("✅ Gemini detailed analysis successful");
+                    analysis
+                }
+                Err(e) => {
+                    println!("⚠️ Gemini analysis failed: {}. Falling back", e);
+                    get_advanced_statistical_analysis(
+                        &fuel_data,
+                        &predictions,
+                        market_context.clone(),
+                    )?
+                }
             }
         }
-    } else {
-        println!("📊 Using advanced statistical analysis");
-        get_advanced_statistical_analysis(&fuel_data, &predictions, market_context.clone())?
+        AIProvider::DeepSeek => {
+            println!("🚀 Using DeepSeek analysis");
+            match get_deepseek_analysis(
+                &fuel_data,
+                &predictions,
+                market_context.clone(),
+                &news_articles,
+                sentiment,
+            )
+            .await
+            {
+                Ok(analysis) => {
+                    println!("✅ DeepSeek analysis successful");
+                    analysis
+                }
+                Err(e) => {
+                    println!(
+                        "⚠️ DeepSeek analysis failed: {}. Falling back to statistical",
+                        e
+                    );
+                    get_advanced_statistical_analysis(
+                        &fuel_data,
+                        &predictions,
+                        market_context.clone(),
+                    )?
+                }
+            }
+        }
+        AIProvider::OpenAI => {
+            println!("🚀 Using OpenAI analysis");
+            match get_openai_analysis(
+                &fuel_data,
+                &predictions,
+                market_context.clone(),
+                &news_articles,
+                sentiment,
+            )
+            .await
+            {
+                Ok(analysis) => {
+                    println!("✅ OpenAI analysis successful");
+                    analysis
+                }
+                Err(e) => {
+                    println!(
+                        "⚠️ OpenAI analysis failed: {}. Falling back to statistical",
+                        e
+                    );
+                    get_advanced_statistical_analysis(
+                        &fuel_data,
+                        &predictions,
+                        market_context.clone(),
+                    )?
+                }
+            }
+        }
+        AIProvider::Statistical => {
+            println!("📊 Using advanced statistical analysis (no API keys)");
+            get_advanced_statistical_analysis(&fuel_data, &predictions, market_context.clone())?
+        }
     };
 
     // Aggiorna le previsioni
@@ -870,8 +1068,590 @@ pub async fn analyze_fuel_prices() -> Result<Vec<FuelPrediction>, Box<dyn Error>
         if let Some(analysis) = ai_analysis.get(&prediction.prodotto) {
             prediction.ai_analysis = Some(analysis.clone());
         }
+
+        // Aggiungi analisi globale e info provider
         prediction.market_sentiment = ai_analysis.get("GLOBAL").cloned();
+        prediction.ai_analysis = prediction.ai_analysis.as_ref().map(|analysis| {
+            format!(
+                "{} [Provider: {} | News: {} articoli]",
+                analysis,
+                match provider {
+                    AIProvider::Gemini => "Gemini (Free)",
+                    AIProvider::DeepSeek => "DeepSeek",
+                    AIProvider::OpenAI => "OpenAI",
+                    AIProvider::Statistical => "Statistical",
+                },
+                news_articles.len()
+            )
+        });
+
+        // Aggiungi impatto news calcolato
+        prediction.news_impact = Some(calculate_news_impact_for_product(
+            &prediction.prodotto,
+            news_articles.as_slice(),
+        ));
     }
 
     Ok(predictions)
+}
+
+async fn get_gemini_analysis(
+    fuel_data: &[FuelData],
+    predictions: &[FuelPrediction],
+    market_context: MarketContext,
+    news_articles: &[NewsArticle],
+    sentiment: &SentimentSummary,
+) -> Result<HashMap<String, String>, Box<dyn Error>> {
+    let gemini_api_key = env::var("GEMINI_API_KEY")?;
+    let client = ReqwestClient::new();
+
+    // Prepara analisi dettagliate per ogni prodotto
+    let product_analyses: Vec<ProductAnalysis> = predictions
+        .iter()
+        .map(|p| ProductAnalysis {
+            name: p.prodotto.clone(),
+            current_price: p.prezzo_attuale,
+            predicted_price: p.prezzo_previsto,
+            change_percentage: p.variazione_percentuale,
+            volatility: calculate_product_volatility(fuel_data, &p.prodotto),
+            confidence: p.confidence,
+            trend_strength: p.variazione_percentuale.abs() / 100.0,
+        })
+        .collect();
+
+    // Prepara dati storici per ogni prodotto
+    let historical_data = prepare_historical_analysis(fuel_data, predictions);
+
+    // Formatta le notizie con sentiment
+    let formatted_news = format_news_with_sentiment(news_articles);
+
+    let user_content = format!(
+        "ANALISI COMPLETA MERCATO CARBURANTI ITALIANO\n\n\
+        📊 CONTESTO MACROECONOMICO:\n\
+        • Tensione geopolitica: {:.1}%\n\
+        • Sentiment notizie: {:.2} ({} positivo, {} negativo, {} neutro)\n\
+        • Fattore stagionale: {:.1}%\n\
+        • Volatilità generale: {:.1}%\n\n\
+        📈 DATI PREVISIONALI DETTAGLIATI:\n{}\n\n\
+        📜 STORICO RECENTE:\n{}\n\n\
+        📰 ULTIME NOTIZIE RILEVANTI:\n{}\n\n\
+        🔍 ANALISI RICHIESTA:\n\
+        Per OGNI tipo di carburante, fornire:\n\
+        1. Analisi specifica del prodotto\n\
+        2. Impatto delle notizie su quel prodotto\n\
+        3. Fattori di rischio specifici\n\
+        4. Previsione a breve termine (7-15 giorni)\n\
+        5. Livello di confidenza\n\n\
+        Formato italiano, massimo 300 caratteri per prodotto.",
+        market_context.geopolitical_tensions * 100.0,
+        sentiment.overall_score,
+        sentiment.positive,
+        sentiment.negative,
+        sentiment.neutral,
+        market_context.seasonal_factors * 100.0,
+        market_context.overall_volatility,
+        serde_json::to_string_pretty(&product_analyses)?,
+        historical_data,
+        formatted_news
+    );
+
+    let system_prompt = r#"SEI UN ANALISTA ESPERTO DEI MERCATI ENERGETICI ITALIANI ED INTERNAZIONALI.
+
+COMPITI SPECIFICI:
+1. Analisi DETTAGLIATA per OGNI tipo di carburante
+2. Collegamento diretto tra notizie e impatto sui prezzi
+3. Valutazione rischio specifica per prodotto
+4. Previsioni a breve termine (7-15 giorni)
+
+FORMATO OBBLIGATORIO PER OGNI PRODOTTO:
+## [NOME PRODOTTO]
+• Analisi: [breve analisi specifica]
+• Notizie: [impatto notizie su questo prodotto]
+• Rischio: [livello rischio]
+• Previsione: [tendenza 7-15 giorni]
+• Confidence: [livello confidenza]
+
+Mantenere analisi concise ma complete (max 300 caratteri per prodotto)."#;
+
+    let full_prompt = format!("{}\n\n{}", system_prompt, user_content);
+
+    let url = format!(
+        "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={}",
+        gemini_api_key
+    );
+
+    let payload = json!({
+        "contents": [{
+            "parts": [{
+                "text": full_prompt
+            }]
+        }],
+        "generationConfig": {
+            "temperature": 0.1,  // Più basso per analisi più precise
+            "topP": 0.8,
+            "maxOutputTokens": 4000,  // Aumentato per analisi multiple
+            "topK": 32
+        }
+    });
+
+    println!("🌐 Invio richiesta analisi dettagliata a Gemini...");
+
+    let response = client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await?;
+
+    if !response.status().is_success() {
+        let error_text = response.text().await?;
+        return Err(format!("Gemini API error: {}", error_text).into());
+    }
+
+    let response_json: serde_json::Value = response.json().await?;
+    println!("✅ Gemini response received");
+
+    let mut analysis_map = HashMap::new();
+
+    if let Some(text) = extract_gemini_text(&response_json) {
+        println!("📝 Gemini analysis received: {} characters", text.len());
+
+        // Parsing avanzato per estrarre analisi per ogni prodotto
+        let analyses = parse_detailed_ai_response(&text, predictions);
+
+        for (product, analysis) in analyses {
+            analysis_map.insert(product, analysis);
+        }
+
+        // Aggiungi analisi globale se presente
+        if let Some(global) = extract_global_analysis(&text) {
+            analysis_map.insert("GLOBAL".to_string(), global);
+        }
+    }
+
+    Ok(analysis_map)
+}
+
+// Nuove funzioni di supporto per l'analisi dettagliata
+fn prepare_historical_analysis(fuel_data: &[FuelData], predictions: &[FuelPrediction]) -> String {
+    let mut result = String::new();
+
+    for prediction in predictions {
+        let product_data: Vec<&FuelData> = fuel_data
+            .iter()
+            .filter(|d| d.nome_prodotto == prediction.prodotto)
+            .collect();
+
+        if product_data.len() >= 4 {
+            let recent_prices: Vec<f64> = product_data
+                .iter()
+                .rev()
+                .take(8)
+                .filter_map(|d| d.prezzo.parse::<f64>().ok())
+                .collect();
+
+            if !recent_prices.is_empty() {
+                let avg_price = recent_prices.iter().sum::<f64>() / recent_prices.len() as f64;
+                let min_price = recent_prices.iter().cloned().fold(f64::INFINITY, f64::min);
+                let max_price = recent_prices
+                    .iter()
+                    .cloned()
+                    .fold(f64::NEG_INFINITY, f64::max);
+
+                result.push_str(&format!(
+                    "• {}: {:.3}€ (min {:.3}€, max {:.3}€, {} dati)\n",
+                    prediction.prodotto,
+                    avg_price,
+                    min_price,
+                    max_price,
+                    recent_prices.len()
+                ));
+            }
+        }
+    }
+
+    result
+}
+
+fn format_news_with_sentiment(news_articles: &[NewsArticle]) -> String {
+    news_articles
+        .iter()
+        .take(8) // Limita a 8 notizie più rilevanti
+        .map(|article| {
+            let sentiment_emoji = match article.sentiment {
+                Some(s) if s > 0.3 => "✅",
+                Some(s) if s < -0.3 => "❌",
+                _ => "➡️",
+            };
+
+            format!(
+                "{} {}: {}",
+                sentiment_emoji, article.source.name, article.title
+            )
+        })
+        .collect::<Vec<String>>()
+        .join("\n")
+}
+
+fn extract_gemini_text(response_json: &serde_json::Value) -> Option<String> {
+    response_json["candidates"][0]["content"]["parts"][0]["text"]
+        .as_str()
+        .map(|s| s.to_string())
+}
+
+fn parse_detailed_ai_response(
+    response: &str,
+    predictions: &[FuelPrediction],
+) -> HashMap<String, String> {
+    let mut analyses = HashMap::new();
+    let lines: Vec<&str> = response.lines().collect();
+
+    let mut current_product = String::new();
+    let mut current_analysis = String::new();
+
+    for line in lines {
+        if line.starts_with("## ") {
+            // Salva l'analisi del prodotto precedente
+            if !current_product.is_empty() && !current_analysis.is_empty() {
+                analyses.insert(current_product.clone(), current_analysis.trim().to_string());
+            }
+
+            // Nuovo prodotto
+            current_product = line.replace("##", "").trim().to_string();
+            current_analysis = String::new();
+        } else if !current_product.is_empty() {
+            current_analysis.push_str(line);
+            current_analysis.push('\n');
+        }
+    }
+
+    // Aggiungi l'ultima analisi
+    if !current_product.is_empty() && !current_analysis.is_empty() {
+        analyses.insert(current_product, current_analysis.trim().to_string());
+    }
+
+    // Assicurati che ogni prediction abbia un'analisi
+    for prediction in predictions {
+        if !analyses.contains_key(&prediction.prodotto) {
+            analyses.insert(
+                prediction.prodotto.clone(),
+                "Analisi non disponibile".to_string(),
+            );
+        }
+    }
+
+    analyses
+}
+
+fn extract_global_analysis(response: &str) -> Option<String> {
+    let lines: Vec<&str> = response.lines().collect();
+    let mut global_analysis = String::new();
+    let mut in_global_section = false;
+
+    for line in lines {
+        if line.contains("ANALISI GLOBALE") || line.contains("CONTESTO GENERALE") {
+            in_global_section = true;
+            continue;
+        }
+
+        if in_global_section {
+            if line.starts_with("## ") {
+                break; // Inizia nuova sezione
+            }
+            global_analysis.push_str(line);
+            global_analysis.push('\n');
+        }
+    }
+
+    if !global_analysis.trim().is_empty() {
+        Some(global_analysis.trim().to_string())
+    } else {
+        None
+    }
+}
+
+// Funzione per provare modelli alternativi
+async fn try_alternative_gemini_models(
+    fuel_data: &[FuelData],
+    predictions: &[FuelPrediction],
+    market_context: MarketContext,
+    news_articles: &[NewsArticle],
+    sentiment: &SentimentSummary,
+) -> Result<HashMap<String, String>, Box<dyn Error>> {
+    let gemini_api_key = env::var("GEMINI_API_KEY")?;
+    let client = ReqwestClient::new();
+
+    let models_to_try = [
+        "gemini-1.5-flash",
+        "gemini-1.5-pro",
+        "gemini-pro",
+        "models/gemini-pro",
+    ];
+
+    for model in models_to_try.iter() {
+        println!("🔄 Trying model: {}", model);
+
+        let url = format!(
+            "https://generativelanguage.googleapis.com/v1/models/{}:generateContent?key={}",
+            model, gemini_api_key
+        );
+
+        let simple_prompt = "Analizza brevemente il mercato carburanti italiano. Rispondi in italiano in massimo 200 caratteri.";
+
+        let payload = json!({
+            "contents": [{
+                "parts": [{
+                    "text": simple_prompt
+                }]
+            }],
+            "generationConfig": {
+                "temperature": 0.2,
+                "maxOutputTokens": 300
+            }
+        });
+
+        let response = client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await;
+
+        match response {
+            Ok(resp) if resp.status().is_success() => {
+                println!("✅ Model {} works!", model);
+                // Se funziona, usa questo modello per la richiesta completa
+                return get_gemini_analysis_with_model(
+                    fuel_data,
+                    predictions,
+                    market_context,
+                    news_articles,
+                    sentiment,
+                    model,
+                )
+                .await;
+            }
+            Ok(resp) => {
+                println!("❌ Model {} failed: {}", model, resp.status());
+            }
+            Err(e) => {
+                println!("❌ Model {} error: {}", model, e);
+            }
+        }
+
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    }
+
+    Err("All Gemini models failed".into())
+}
+
+async fn get_gemini_analysis_with_model(
+    fuel_data: &[FuelData],
+    predictions: &[FuelPrediction],
+    market_context: MarketContext,
+    news_articles: &[NewsArticle],
+    sentiment: &SentimentSummary,
+    model: &str,
+) -> Result<HashMap<String, String>, Box<dyn Error>> {
+    let gemini_api_key = env::var("GEMINI_API_KEY")?;
+    let client = ReqwestClient::new();
+
+    let url = format!(
+        "https://generativelanguage.googleapis.com/v1/models/{}:generateContent?key={}",
+        model, gemini_api_key
+    );
+
+    let product_analyses: Vec<ProductAnalysis> = predictions
+        .iter()
+        .map(|p| ProductAnalysis {
+            name: p.prodotto.clone(),
+            current_price: p.prezzo_attuale,
+            predicted_price: p.prezzo_previsto,
+            change_percentage: p.variazione_percentuale,
+            volatility: calculate_product_volatility(fuel_data, &p.prodotto),
+            confidence: p.confidence,
+            trend_strength: p.variazione_percentuale.abs() / 100.0,
+        })
+        .collect();
+
+    let user_content = format!(
+        "Analizza questo scenario mercato carburanti:\n\n\
+        CONTESTO MERCATO:\n\
+        - Tensione geopolitica: {:.1}%\n\
+        - Sentiment news: {:.2} ({} positivo, {} negativo)\n\
+        - Fattore stagionale: {:.1}%\n\
+        - Volatilità generale: {:.1}%\n\n\
+        PREVISIONI ATTUALI:\n{}\n\n\
+        Fornisci analisi dettagliata in italiano in massimo 500 caratteri.",
+        market_context.geopolitical_tensions * 100.0,
+        sentiment.overall_score,
+        sentiment.positive,
+        sentiment.negative,
+        market_context.seasonal_factors * 100.0,
+        market_context.overall_volatility,
+        serde_json::to_string_pretty(&product_analyses)?
+    );
+
+    let system_prompt =
+        r#"SEI UN ANALISTA ESPERTO DEI MERCATI ENERGETICI. Analizza brevemente in italiano."#;
+
+    let full_prompt = format!("{}\n\n{}", system_prompt, user_content);
+
+    let payload = json!({
+        "contents": [{
+            "parts": [{
+                "text": full_prompt
+            }]
+        }],
+        "generationConfig": {
+            "temperature": 0.2,
+            "topP": 0.9,
+            "maxOutputTokens": 1000,  // Ridotto per efficienza
+            "topK": 40
+        },
+        "safetySettings": [
+            {
+                "category": "HARM_CATEGORY_HARASSMENT",
+                "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+            },
+            {
+                "category": "HARM_CATEGORY_HATE_SPEECH",
+                "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+            }
+        ]
+    });
+
+    println!("🌐 Invio richiesta a Gemini con modello {}...", model);
+
+    let response = client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await?;
+
+    let status = response.status();
+    println!("📊 Status response: {}", status);
+
+    if !status.is_success() {
+        let error_text = response.text().await?;
+        println!("❌ Gemini API error: {}", error_text);
+
+        // Prova con un modello alternativo se il primo fallisce
+        if error_text.contains("not found") {
+            return Box::pin(try_alternative_gemini_models(
+                fuel_data,
+                predictions,
+                market_context,
+                news_articles,
+                sentiment,
+            ))
+            .await;
+        }
+
+        return Err(format!("Gemini API error: {} - {}", status, error_text).into());
+    }
+
+    let response_json: serde_json::Value = response.json().await?;
+    println!("✅ Gemini response received");
+
+    // Debug: stampa la struttura della response
+    println!("📋 Response structure: {:?}", response_json);
+
+    let mut analysis_map = HashMap::new();
+
+    // Estrazione corretta del testo dalla response
+    if let Some(candidates) = response_json["candidates"].as_array() {
+        if let Some(first_candidate) = candidates.first() {
+            if let Some(content_parts) = first_candidate["content"]["parts"].as_array() {
+                if let Some(first_part) = content_parts.first() {
+                    if let Some(text) = first_part["text"].as_str() {
+                        println!("📝 Gemini analysis: {} characters", text.len());
+
+                        let (global, specific) = parse_ai_response(text, predictions);
+                        analysis_map.insert("GLOBAL".to_string(), global);
+
+                        for (product, analysis) in specific {
+                            analysis_map.insert(product, analysis);
+                        }
+                    } else {
+                        println!("❌ No text in part: {:?}", first_part);
+                    }
+                }
+            } else {
+                println!("❌ No parts in content: {:?}", first_candidate["content"]);
+            }
+        }
+    } else {
+        println!(
+            "❌ No candidates in response, trying different path: {:?}",
+            response_json
+        );
+
+        // Prova un percorso alternativo per l'estrazione
+        if let Some(text) = response_json["candidates"][0]["content"]["parts"][0]["text"].as_str() {
+            println!("✅ Found text via alternative path");
+            let (global, specific) = parse_ai_response(text, predictions);
+            analysis_map.insert("GLOBAL".to_string(), global);
+            for (product, analysis) in specific {
+                analysis_map.insert(product, analysis);
+            }
+        } else {
+            return Err("Could not extract text from Gemini response".into());
+        }
+    }
+
+    Ok(analysis_map)
+}
+
+// Funzione per listare i modelli disponibili (debug)
+async fn list_available_models() -> Result<(), Box<dyn Error>> {
+    let gemini_api_key = env::var("GEMINI_API_KEY")?;
+    let client = ReqwestClient::new();
+
+    let url = format!(
+        "https://generativelanguage.googleapis.com/v1/models?key={}",
+        gemini_api_key
+    );
+
+    let response = client.get(&url).send().await?;
+
+    if response.status().is_success() {
+        let models: serde_json::Value = response.json().await?;
+        println!(
+            "📋 Available models: {}",
+            serde_json::to_string_pretty(&models)?
+        );
+    } else {
+        println!("❌ Failed to list models: {}", response.status());
+    }
+
+    Ok(())
+}
+
+// Funzione per calcolare l'impatto delle news specifico per prodotto
+fn calculate_news_impact_for_product(product: &str, news_articles: &[NewsArticle]) -> f64 {
+    let product_keywords = match product.to_lowercase().as_str() {
+        s if s.contains("diesel") => vec!["diesel", "gasolio", "transport", "camion"],
+        s if s.contains("benzina") => vec!["benzina", "petrol", "gasoline", "auto"],
+        s if s.contains("gpl") => vec!["gpl", "lpg", "gas", "auto"],
+        s if s.contains("metano") => vec!["metano", "cng", "gas", "auto"],
+        _ => vec!["carburante", "fuel", "energy", "petrolio"],
+    };
+
+    let relevant_articles = news_articles
+        .iter()
+        .filter(|article| {
+            product_keywords.iter().any(|kw| {
+                article.title.to_lowercase().contains(kw)
+                    || article
+                        .description
+                        .as_ref()
+                        .map_or(false, |d| d.to_lowercase().contains(kw))
+            })
+        })
+        .count();
+
+    (relevant_articles as f64 / news_articles.len().max(1) as f64).min(1.0)
 }

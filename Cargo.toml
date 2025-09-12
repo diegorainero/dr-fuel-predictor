@@ -15,3 +15,5 @@ dotenv = "0.15"
 futures = "0.3"
 async-openai = "0.29"
 tokio = { version = "1.0", features = ["full"] }
+google-generative-ai-rs = "0.3"
+deepseek_rs = "0.1"

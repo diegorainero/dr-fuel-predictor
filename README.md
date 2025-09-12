@@ -341,9 +341,9 @@ This project is licensed under the MIT License. See the `LICENSE` file for detai
 ## 👨‍💻 Author
 
 **Diego Rainero**
-- Email: [your-email@example.com]
-- LinkedIn: [your-linkedin]
-- GitHub: [@tuousername]
+- Email: [diego.rainero@gmail.com](mailto:diego.rainero@gmail.com)
+- LinkedIn: [diegorainero](https://www.linkedin.com/in/diegorainero/)
+- GitHub: [@diegorainero](https://github.com/diegorainero)
 
 ## 🙏 Acknowledgements
 
@@ -354,4 +354,4 @@ This project is licensed under the MIT License. See the `LICENSE` file for detai
 
 ---
 
-💡 Tip: For support or questions, open an [Issue](https://github.com/tuousername/dr_fuel_predictor/issues) on GitHub!
+💡 Tip: For support or questions, open an [Issue](https://github.com/diegorainero/dr_fuel_predictor/issues) on GitHub!
